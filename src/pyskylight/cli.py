@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import date, timedelta
 from typing import Any, Callable, List, Optional
 
 import typer
@@ -88,7 +89,11 @@ def _run(action: Callable[[SkylightClient], Any]) -> Any:
             TokenCache().save(fresh.credentials, settings.base_url)
             return action(fresh)
     except SkylightError as exc:
-        typer.echo(json.dumps({"ok": False, "error": str(exc), "type": type(exc).__name__}))
+        payload = {"ok": False, "error": str(exc), "type": type(exc).__name__}
+        body = getattr(exc, "body", None)
+        if body:
+            payload["body"] = body
+        typer.echo(json.dumps(payload))
         raise typer.Exit(code=1)
 
 
@@ -126,7 +131,11 @@ def login() -> None:
     try:
         client = SkylightClient.login(settings.email, settings.password, base_url=settings.base_url)
     except SkylightError as exc:
-        typer.echo(json.dumps({"ok": False, "error": str(exc), "type": type(exc).__name__}))
+        payload = {"ok": False, "error": str(exc), "type": type(exc).__name__}
+        body = getattr(exc, "body", None)
+        if body:
+            payload["body"] = body
+        typer.echo(json.dumps(payload))
         raise typer.Exit(code=1)
     TokenCache().save(client.credentials, settings.base_url)
     subscription = None
@@ -443,10 +452,26 @@ def list_add(
 
 
 @app.command()
-def chores(frame: Optional[str] = typer.Option(None, "--frame")) -> None:
-    """List chores."""
+def chores(
+    after: Optional[str] = typer.Option(
+        None, "--after", help="Start date YYYY-MM-DD (default: today)."
+    ),
+    before: Optional[str] = typer.Option(
+        None, "--before", help="End date YYYY-MM-DD (default: 13 days after --after)."
+    ),
+    frame: Optional[str] = typer.Option(None, "--frame"),
+) -> None:
+    """List chores in a date window.
+
+    The live API rejects this endpoint with HTTP 422 ("after can't be blank",
+    "before can't be blank") unless both bounds are supplied — undocumented,
+    confirmed 2026-09-14 by reading the error body. Defaults to a two-week
+    window starting today so the bare command still works.
+    """
     fid = _frame(frame)
-    _emit(_run(lambda c: c.list_chores(fid)))
+    start = after or date.today().isoformat()
+    end = before or (date.fromisoformat(start) + timedelta(days=13)).isoformat()
+    _emit(_run(lambda c: c.list_chores(fid, after=start, before=end)))
 
 
 # --------------------------------------------------------------------------- #

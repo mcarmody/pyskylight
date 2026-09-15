@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from pyskylight import cli
 from pyskylight.auth import Credentials
-from pyskylight.errors import SkylightAuthError, SkylightPlusRequiredError
+from pyskylight.errors import SkylightAPIError, SkylightAuthError, SkylightPlusRequiredError
 from pyskylight.models import CalendarEvent, Frame, MealCategory, Recipe, Sitting
 
 runner = CliRunner()
@@ -75,7 +75,8 @@ class FakeClient:
     def list_lists(self, frame_id):
         return [{"id": "1"}]
 
-    def list_chores(self, frame_id):
+    def list_chores(self, frame_id, **params):
+        self.calls.append(("list_chores", params))
         return [{"id": "1"}]
 
     def create_calendar_event(self, frame_id, summary, **fields):
@@ -225,6 +226,31 @@ def test_categories_lists_chores(monkeypatch, fake_client):
     assert runner.invoke(cli.app, ["chores"]).exit_code == 0
 
 
+def test_chores_defaults_after_before(monkeypatch, fake_client):
+    # The live API 422s ("after/before can't be blank") unless both bounds are
+    # sent — confirmed 2026-09-14 by reading the error body. The bare command
+    # must still work by filling in a default two-week window.
+    monkeypatch.setenv("SKYLIGHT_FRAME_ID", "7")
+    result = runner.invoke(cli.app, ["chores"])
+    assert result.exit_code == 0
+    name, params = fake_client.calls[-1]
+    assert name == "list_chores"
+    assert params.keys() == {"after", "before"}
+    assert params["after"] < params["before"]
+
+
+def test_chores_explicit_after_before(monkeypatch, fake_client):
+    monkeypatch.setenv("SKYLIGHT_FRAME_ID", "7")
+    result = runner.invoke(
+        cli.app, ["chores", "--after", "2026-09-08", "--before", "2026-09-21"]
+    )
+    assert result.exit_code == 0
+    assert fake_client.calls[-1] == (
+        "list_chores",
+        {"after": "2026-09-08", "before": "2026-09-21"},
+    )
+
+
 def test_error_path_prints_json(monkeypatch):
     monkeypatch.setattr(
         cli,
@@ -234,6 +260,28 @@ def test_error_path_prints_json(monkeypatch):
     result = runner.invoke(cli.app, ["frames"])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["ok"] is False
+
+
+def test_error_path_surfaces_body(monkeypatch):
+    # Regression: HTTP-level validation errors (e.g. Rails "after can't be
+    # blank") were silently dropped before this fix, leaving only the bare
+    # status code to debug from.
+    monkeypatch.setattr(
+        cli,
+        "_build_client",
+        lambda settings: FakeClient(
+            list_frames=SkylightAPIError(
+                "GET /api/frames/7/chores failed with HTTP 422",
+                status_code=422,
+                body='{"errors":{"after":["can\'t be blank"]}}',
+            )
+        ),
+    )
+    result = runner.invoke(cli.app, ["frames"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert "can't be blank" in payload["body"]
 
 
 def test_auth_retry(monkeypatch):
