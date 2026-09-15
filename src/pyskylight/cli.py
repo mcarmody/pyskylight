@@ -1129,7 +1129,15 @@ def task_box_delete(
 
 @app.command()
 def routines(frame: Optional[str] = typer.Option(None, "--frame")) -> None:
-    """List routines."""
+    """List routines.
+
+    WARNING: this endpoint 404s on every live household frame tested
+    (confirmed 2026-09-14, both GET and POST /api/frames/{id}/routines).
+    It looks inactive/wrong and was never live-verified. The Skylight app's
+    "routine" concept is not a separate resource -- it's a `chore` with
+    `"routine": true` and a `recurrence_set` RRULE. Use `chores`/`chore-add`
+    instead; that family is fully verified against the live API.
+    """
     fid = _frame(frame)
     _emit(_run(lambda c: c.list_routines(fid)))
 

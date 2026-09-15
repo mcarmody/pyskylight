@@ -106,6 +106,16 @@ Run `skylight --help`, or `skylight <command> --help` for flags. Every command t
 > `calendar-link`. Account-level and billing operations (registration/deletion,
 > subscription purchase) are intentionally **not** exposed.
 
+> **`routines`/`routine-add`/etc. do not work — confirmed 2026-09-14 against a live
+> household frame.** Both `GET` and `POST /api/frames/{id}/routines` 404. This is a
+> distinct, apparently-inactive endpoint that was never live-verified when it was
+> written. **A "routine" in the Skylight app is not a separate resource — it's a
+> `chore` with `"routine": true` and a `recurrence_set` RRULE** (e.g. a nightly
+> "Brush teeth" chore, `RRULE:FREQ=DAILY;INTERVAL=1;BYHOUR=20`). Use the `chores` /
+> `chore-add` family (which is fully verified, see the `chores` fix note above) for
+> anything the app UI calls a routine; don't chase the `/routines` path further
+> without a fresh HAR capture from the app to find the real endpoint, if one exists.
+
 ## Configuration
 
 | Variable | Purpose |
