@@ -559,6 +559,9 @@ def chore_add(
     rrule: Optional[List[str]] = typer.Option(None, "--rrule", help="RRULE (repeatable)."),
     up_for_grabs: Optional[bool] = typer.Option(None, "--up-for-grabs/--assigned"),
     emoji: Optional[str] = typer.Option(None, "--emoji"),
+    extra_json: Optional[str] = typer.Option(
+        None, "--extra", help="Extra body fields as a JSON object, e.g. habit-tracker flags."
+    ),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
     """Create a chore."""
@@ -576,6 +579,7 @@ def chore_add(
                 recurrence_set=list(rrule) if rrule else None,
                 up_for_grabs=up_for_grabs,
                 emoji_icon=emoji,
+                extra=_json_arg(extra_json) if extra_json else None,
             )
         )
     )
