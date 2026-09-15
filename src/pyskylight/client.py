@@ -411,8 +411,17 @@ class SkylightClient:
         up_for_grabs: Optional[bool] = None,
         emoji_icon: Optional[str] = None,
         status: Optional[str] = None,
+        routine: Optional[bool] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Any:
+        # `routine` is a real, independently-settable field (confirmed live
+        # 2026-09-14): a BYHOUR recurrence rule is rejected with "BYHOUR not
+        # allowed for non-routine chores" unless routine=True is sent
+        # alongside it. It is NOT the same as the `habit_tracker`
+        # relationship the app shows on some routine chores -- that appears
+        # to be a separate, still-unconfirmed write path (Mike, #admin
+        # 2026-09-14: "Habit_tracker is a separate flag I could add").
+        # Setting routine=True here does not create a habit_tracker link.
         body = _compact(
             {
                 "summary": summary,
@@ -426,6 +435,7 @@ class SkylightClient:
                 "up_for_grabs": up_for_grabs,
                 "emoji_icon": emoji_icon,
                 "status": status,
+                "routine": routine,
                 **(extra or {}),
             }
         )

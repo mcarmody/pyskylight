@@ -559,8 +559,18 @@ def chore_add(
     rrule: Optional[List[str]] = typer.Option(None, "--rrule", help="RRULE (repeatable)."),
     up_for_grabs: Optional[bool] = typer.Option(None, "--up-for-grabs/--assigned"),
     emoji: Optional[str] = typer.Option(None, "--emoji"),
+    routine: Optional[bool] = typer.Option(
+        None,
+        "--routine/--not-routine",
+        help=(
+            "Mark as a routine (required for a BYHOUR recurrence rule -- the API "
+            "rejects BYHOUR with 'not allowed for non-routine chores' otherwise). "
+            "Does NOT create the habit_tracker link some routine chores show in "
+            "the app; that write path is still unconfirmed."
+        ),
+    ),
     extra_json: Optional[str] = typer.Option(
-        None, "--extra", help="Extra body fields as a JSON object, e.g. habit-tracker flags."
+        None, "--extra", help="Extra body fields as a JSON object, for anything still unmapped."
     ),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
@@ -579,6 +589,7 @@ def chore_add(
                 recurrence_set=list(rrule) if rrule else None,
                 up_for_grabs=up_for_grabs,
                 emoji_icon=emoji,
+                routine=routine,
                 extra=_json_arg(extra_json) if extra_json else None,
             )
         )
@@ -653,7 +664,14 @@ def chore_delete(
     apply_to: Optional[str] = typer.Option(None, "--apply-to", help="one|all|future"),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
-    """Delete a chore."""
+    """Delete a chore.
+
+    --apply-to is REQUIRED for any recurring chore -- confirmed live
+    2026-09-14: omitting it 400s with "you must have a valid value for
+    apply_to". A one-off (non-recurring) chore deletes fine without it.
+    Not defaulted here on purpose: one/all/future are materially different
+    and destructive, so guessing one silently would be the wrong call.
+    """
     fid = _frame(frame)
     _run(lambda c: c.delete_chore(fid, chore_id, apply_to=apply_to))
     _emit({"ok": True, "deleted": chore_id})
@@ -1149,8 +1167,8 @@ def routines(
     `recurrence_set` RRULE (e.g. a nightly "Brush teeth" chore). This command
     now pulls the same date-windowed chores list as `chores` and filters it
     to routine:true, so it actually returns something instead of a 404.
-    Create one with `chore-add --recurring --rrule ...`; there is no
-    dedicated `routine-add` that works (see its own --help).
+    Create one with `chore-add --routine --recurring --rrule ...` (see its
+    own --help); the dedicated `routine-add` command still 404s.
     """
     fid = _frame(frame)
     start = after or date.today().isoformat()
@@ -1175,13 +1193,14 @@ def routine_add(
     BROKEN: POST /api/frames/{id}/routines 404s on every live frame tested
     (confirmed 2026-09-14) -- calling this will fail. `routines` (the list
     command) has been repointed at chores flagged routine:true, which is
-    what the app actually uses, but the write side isn't confirmed the same
-    way: the one routine chore inspected live ("Brush teeth", daily RRULE)
-    also carried a `habit_tracker` relationship that a plain recurring
-    `chore-add` does not produce, so it's not yet known whether `chore-add
-    --recurring --rrule ...` alone reproduces a real routine server-side or
-    only a recurring chore that never shows as one. Verify against the live
-    app before relying on either path to create a routine.
+    what the app actually uses. To create one, use
+    `chore-add --routine --recurring --rrule '...;BYHOUR=<hour>'`: `routine`
+    is a real, independently-settable field (confirmed live 2026-09-14 --
+    a BYHOUR rule is rejected as "not allowed for non-routine chores"
+    without it). That reproduces the recurring/routine shape, but NOT the
+    `habit_tracker` relationship the app shows on some routine chores --
+    that appears to be a separate write path, still unconfirmed (Mike,
+    #admin 2026-09-14: "Habit_tracker is a separate flag I could add").
     """
     fid = _frame(frame)
     _emit(_run(lambda c: c.create_routine(fid, title, assignee_id, _json_arg(steps_json))))
