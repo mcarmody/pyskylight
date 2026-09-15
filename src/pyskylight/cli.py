@@ -375,12 +375,23 @@ def grocery_add(
 @app.command()
 def plan(
     frame: Optional[str] = typer.Option(None, "--frame"),
-    date_min: Optional[str] = typer.Option(None, "--from"),
-    date_max: Optional[str] = typer.Option(None, "--to"),
+    date_min: Optional[str] = typer.Option(
+        None, "--from", help="Start date YYYY-MM-DD (default: today)."
+    ),
+    date_max: Optional[str] = typer.Option(
+        None, "--to", help="End date YYYY-MM-DD (default: 13 days after --from)."
+    ),
 ) -> None:
-    """List planned meals (sittings)."""
+    """List planned meals (sittings) in a date window.
+
+    Like ``chores``, the live API 422s ("Date min is required") unless a
+    lower bound is sent -- confirmed 2026-09-14. Defaults to a two-week
+    window starting today so the bare command still works.
+    """
     fid = _frame(frame)
-    _emit(_run(lambda c: [_resource_dict(x) for x in c.list_sittings(fid, date_min, date_max)]))
+    start = date_min or date.today().isoformat()
+    end = date_max or (date.fromisoformat(start) + timedelta(days=13)).isoformat()
+    _emit(_run(lambda c: [_resource_dict(x) for x in c.list_sittings(fid, start, end)]))
 
 
 @app.command("plan-add")
