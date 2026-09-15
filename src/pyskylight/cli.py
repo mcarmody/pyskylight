@@ -1128,18 +1128,35 @@ def task_box_delete(
 
 
 @app.command()
-def routines(frame: Optional[str] = typer.Option(None, "--frame")) -> None:
-    """List routines.
+def routines(
+    after: Optional[str] = typer.Option(
+        None, "--after", help="Start date YYYY-MM-DD (default: today)."
+    ),
+    before: Optional[str] = typer.Option(
+        None, "--before", help="End date YYYY-MM-DD (default: 13 days after --after)."
+    ),
+    frame: Optional[str] = typer.Option(None, "--frame"),
+) -> None:
+    """List routines (chores flagged routine:true).
 
-    WARNING: this endpoint 404s on every live household frame tested
-    (confirmed 2026-09-14, both GET and POST /api/frames/{id}/routines).
-    It looks inactive/wrong and was never live-verified. The Skylight app's
-    "routine" concept is not a separate resource -- it's a `chore` with
-    `"routine": true` and a `recurrence_set` RRULE. Use `chores`/`chore-add`
-    instead; that family is fully verified against the live API.
+    There is no working /routines endpoint on the live API -- GET and POST
+    both 404 (confirmed 2026-09-14). The app's "routine" concept isn't a
+    separate resource: it's a `chore` with `"routine": true` and a
+    `recurrence_set` RRULE (e.g. a nightly "Brush teeth" chore). This command
+    now pulls the same date-windowed chores list as `chores` and filters it
+    to routine:true, so it actually returns something instead of a 404.
+    Create one with `chore-add --recurring --rrule ...`; there is no
+    dedicated `routine-add` that works (see its own --help).
     """
     fid = _frame(frame)
-    _emit(_run(lambda c: c.list_routines(fid)))
+    start = after or date.today().isoformat()
+    end = before or (date.fromisoformat(start) + timedelta(days=13)).isoformat()
+
+    def _routines_only(c: SkylightClient) -> List[Any]:
+        chores = c.list_chores(fid, after=start, before=end)
+        return [item for item in chores if (item.get("attributes") or {}).get("routine")]
+
+    _emit(_run(_routines_only))
 
 
 @app.command("routine-add")
@@ -1149,7 +1166,19 @@ def routine_add(
     steps_json: str = typer.Option(..., "--json", help="JSON array of steps."),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
-    """Create a routine."""
+    """Create a routine.
+
+    BROKEN: POST /api/frames/{id}/routines 404s on every live frame tested
+    (confirmed 2026-09-14) -- calling this will fail. `routines` (the list
+    command) has been repointed at chores flagged routine:true, which is
+    what the app actually uses, but the write side isn't confirmed the same
+    way: the one routine chore inspected live ("Brush teeth", daily RRULE)
+    also carried a `habit_tracker` relationship that a plain recurring
+    `chore-add` does not produce, so it's not yet known whether `chore-add
+    --recurring --rrule ...` alone reproduces a real routine server-side or
+    only a recurring chore that never shows as one. Verify against the live
+    app before relying on either path to create a routine.
+    """
     fid = _frame(frame)
     _emit(_run(lambda c: c.create_routine(fid, title, assignee_id, _json_arg(steps_json))))
 
@@ -1162,7 +1191,11 @@ def routine_update(
     steps_json: Optional[str] = typer.Option(None, "--json"),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
-    """Update a routine."""
+    """Update a routine.
+
+    BROKEN: same dead /routines endpoint as routine-add (see its --help).
+    Update the underlying chore with chore-update instead.
+    """
     fid = _frame(frame)
     fields = _fields(title=title, assignee_id=assignee_id, steps=_json_arg(steps_json))
     _emit(_run(lambda c: c.update_routine(fid, routine_id, **fields)))
@@ -1172,7 +1205,11 @@ def routine_update(
 def routine_delete(
     routine_id: str = typer.Argument(...), frame: Optional[str] = typer.Option(None, "--frame")
 ) -> None:
-    """Delete a routine."""
+    """Delete a routine.
+
+    BROKEN: same dead /routines endpoint as routine-add (see its --help).
+    Delete the underlying chore with chore-delete instead.
+    """
     fid = _frame(frame)
     _run(lambda c: c.delete_routine(fid, routine_id))
     _emit({"ok": True, "deleted": routine_id})
@@ -1183,7 +1220,10 @@ def routines_reorder(
     routine_id: List[str] = typer.Option(..., "--id", help="Routine id in order (repeatable)."),
     frame: Optional[str] = typer.Option(None, "--frame"),
 ) -> None:
-    """Reorder routines."""
+    """Reorder routines.
+
+    BROKEN: same dead /routines endpoint as routine-add (see its --help).
+    """
     fid = _frame(frame)
     _emit(_run(lambda c: c.reorder_routines(fid, list(routine_id))))
 

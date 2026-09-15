@@ -87,7 +87,9 @@ NEW_COMMANDS: List[List[str]] = [
     ["task-box-add", "--title", "Call plumber"],
     ["task-box-update", "31", "--json", '{"title":"x"}'],
     ["task-box-delete", "31"],
-    ["routines"],
+    # "routines" is exercised in test_cli.py::test_routines_filters_chores_to_routine_true
+    # instead of here -- it now filters a real chores-shaped list, which this
+    # module's generic single-resource FakeAll fixture doesn't simulate.
     ["routine-add", "--title", "Morning", "--assignee-id", "2", "--json", '[{"x":1}]'],
     ["routine-update", "41", "--title", "Eve"],
     ["routine-delete", "41"],

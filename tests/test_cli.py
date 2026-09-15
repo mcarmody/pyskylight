@@ -77,7 +77,7 @@ class FakeClient:
 
     def list_chores(self, frame_id, **params):
         self.calls.append(("list_chores", params))
-        return [{"id": "1"}]
+        return self._maybe("list_chores", [{"id": "1"}])
 
     def create_calendar_event(self, frame_id, summary, **fields):
         return CalendarEvent.from_jsonapi({"id": "e1", "attributes": {"summary": summary}})
@@ -237,6 +237,26 @@ def test_chores_defaults_after_before(monkeypatch, fake_client):
     assert name == "list_chores"
     assert params.keys() == {"after", "before"}
     assert params["after"] < params["before"]
+
+
+def test_routines_filters_chores_to_routine_true(monkeypatch):
+    # /routines 404s on every live frame (confirmed 2026-09-14); `routines`
+    # now pulls the same date-windowed chores list as `chores` and keeps
+    # only the ones flagged routine:true, since that's what the app's
+    # "routine" concept actually is.
+    client = FakeClient(
+        list_chores=[
+            {"id": "1", "attributes": {"summary": "Brush teeth", "routine": True}},
+            {"id": "2", "attributes": {"summary": "Do the dishes", "routine": False}},
+            {"id": "3", "attributes": {"summary": "Clean up toys", "routine": True}},
+        ]
+    )
+    monkeypatch.setattr(cli, "_build_client", lambda settings: client)
+    monkeypatch.setenv("SKYLIGHT_FRAME_ID", "7")
+    result = runner.invoke(cli.app, ["routines"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert {item["id"] for item in payload} == {"1", "3"}
 
 
 def test_chores_explicit_after_before(monkeypatch, fake_client):
